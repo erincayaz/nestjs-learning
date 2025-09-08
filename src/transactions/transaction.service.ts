@@ -7,6 +7,7 @@ import { JwtPayloadType } from "src/auth/strategies/jwt-payload.type";
 import { RoleEnum } from "src/roles/role.enum";
 import { FilterTransactionDto, SortTransactionDto } from "./dtos/query-transaction.dto";
 import { IPaginationOptions } from "src/utils/types/pagination-options";
+import { DailyReport } from "src/reports/domain/daily-report";
 
 @Injectable()
 export class TransactionService {

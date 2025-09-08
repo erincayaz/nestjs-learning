@@ -6,9 +6,15 @@ import { TransactionMapper } from "./transaction.mapper";
 import { FilterTransactionDto, SortTransactionDto } from "../dtos/query-transaction.dto";
 import { IPaginationOptions } from "src/utils/types/pagination-options";
 import { JwtPayloadType } from "src/auth/strategies/jwt-payload.type";
-import { literal, Order, OrderItem, WhereOptions } from "sequelize";
+import { literal, Order, OrderItem, Sequelize, WhereOptions } from "sequelize";
 import { Op } from "sequelize";
 import { RoleEnum } from "src/roles/role.enum";
+import { DailyReport } from "src/reports/domain/daily-report";
+import { TransactionStatus } from "../enums/transaction-status.enum";
+import { DailyFilterReportDto } from "src/reports/dtos/daily-filter.dto";
+import { SortReportDto } from "src/reports/dtos/base-filter.dto";
+import { CardBrandReport } from "src/reports/domain/card-brand-report";
+import { TopCardBrandFilterReportDto } from "src/reports/dtos/card-brand-filter.dto";
 
 @Injectable()
 export class TransactionRepository {
@@ -91,6 +97,143 @@ export class TransactionRepository {
     });
 
     return entities.map((entity) => TransactionMapper.toDomain(entity));
+  }
+
+  async findDailyReport({
+    filterOptions,
+    sortOptions,
+    currentUser,
+  }: {
+    filterOptions?: DailyFilterReportDto | null;
+    sortOptions?: SortReportDto[] | null;
+    currentUser: JwtPayloadType;
+  }): Promise<DailyReport[]> {
+    let where: WhereOptions<TransactionEntity> = {};
+
+    // Vendor restriction
+    if (currentUser.role === RoleEnum.VENDOR) {
+      where.vendorId = currentUser.vendorId;
+    } else if (currentUser.role === RoleEnum.ADMIN && filterOptions?.vendorId) {
+      where.vendorId = filterOptions.vendorId;
+    }
+
+    // Status filter
+    if (filterOptions?.status?.length) {
+      where.status = { [Op.in]: filterOptions.status };
+    } else {
+      const defaultStatus = [TransactionStatus.AUTHORIZED, TransactionStatus.CAPTURED]
+      where.status = { [Op.in]: defaultStatus }
+    }
+
+    // CreatedAt range
+    if (filterOptions?.startDate || filterOptions?.endDate) {
+      where.createdAt = {};
+      if (filterOptions.startDate) {
+        (where.createdAt as any)[Op.gte] = filterOptions.startDate;
+      }
+      if (filterOptions.endDate) {
+        (where.createdAt as any)[Op.lte] = filterOptions.endDate;
+      }
+    }
+
+    // Card brand filter
+    if (filterOptions?.cardBrand) {
+      where[Op.and] = [
+        ...(where[Op.and] || []),
+        literal(`"pgExtraInfo"->>'cardBrand' = '${filterOptions.cardBrand}'`),
+      ];
+    }
+
+    // Sorting
+    const order: Order = sortOptions?.map<OrderItem>((sort) => [
+      sort.orderBy,
+      sort.order,
+    ]) ?? [['day', 'ASC']];
+
+    // Query with GROUP BY day
+    const results = await this.transactionModel.findAll({
+      attributes: [
+        [Sequelize.fn('DATE_TRUNC', 'day', Sequelize.col('createdAt')), 'day'],
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'transaction_count'],
+        [Sequelize.fn('SUM', Sequelize.col('amount')), 'total_amount'],
+      ],
+      where,
+      group: [Sequelize.fn('DATE_TRUNC', 'day', Sequelize.col('createdAt'))],
+      order,
+      raw: true,
+    });
+
+    return results.map((row: any) => ({
+      date: row.day,
+      transactionCount: Number(row.transaction_count),
+      totalAmount: Number(row.total_amount),
+    }));
+  }
+
+  // TODO: Merge find daily report with this
+  async findTopCardBrands({
+    filterOptions,
+    sortOptions,
+    currentUser,
+  }: {
+    filterOptions?: TopCardBrandFilterReportDto | null;
+    sortOptions?: SortReportDto[] | null;
+    currentUser: JwtPayloadType;
+  }): Promise<CardBrandReport[]> {
+    let where: WhereOptions<TransactionEntity> = {};
+
+    // Vendor restriction
+    if (currentUser.role === RoleEnum.VENDOR) {
+      where.vendorId = currentUser.vendorId;
+    } else if (currentUser.role === RoleEnum.ADMIN && filterOptions?.vendorId) {
+      where.vendorId = filterOptions.vendorId;
+    }
+
+    // Status filter
+    if (filterOptions?.status?.length) {
+      where.status = { [Op.in]: filterOptions.status };
+    } else {
+      const defaultStatus = [TransactionStatus.AUTHORIZED, TransactionStatus.CAPTURED]
+      where.status = { [Op.in]: defaultStatus }
+    }
+
+    // CreatedAt range
+    if (filterOptions?.startDate || filterOptions?.endDate) {
+      where.createdAt = {};
+      if (filterOptions.startDate) {
+        (where.createdAt as any)[Op.gte] = filterOptions.startDate;
+      }
+      if (filterOptions.endDate) {
+        (where.createdAt as any)[Op.lte] = filterOptions.endDate;
+      }
+    }
+
+    // Sorting
+    const order: Order = sortOptions?.map<OrderItem>((sort) => [
+      sort.orderBy,
+      sort.order,
+    ]) ?? [['count', 'DESC']];
+    // TODO: Remove sorting and add default sorting to find top card brands
+
+    // Query with GROUP BY cardBrand
+    const results = await this.transactionModel.findAll({
+      attributes: [
+        [Sequelize.literal(`"pgExtraInfo"->>'cardBrand'`), 'cardBrand'],
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'transactionCount'],
+        [Sequelize.fn('SUM', Sequelize.col('amount')), 'totalAmount'],
+      ],
+      where,
+      group: [Sequelize.literal(`"pgExtraInfo"->>'cardBrand'`) as any],
+      order,
+      raw: true,
+    });
+
+     // Map to DTO
+    return results.map((row: any) => ({
+      cardBrand: row.cardBrand,
+      count: Number(row.transactionCount),
+      totalAmount: Number(row.totalAmount),
+    }));
   }
 
   async findById(id: string): Promise<Transaction | null> {

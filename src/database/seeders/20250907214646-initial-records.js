@@ -24,7 +24,7 @@ module.exports = {
       {
         id: adminId,
         email: 'admin@example.com',
-        password: '$2b$10$hashedpassword',
+        password: '$2b$10$peCe1.CLcKZ87Z38/Ekfke/6E.DQ7xrLcrIa1cNQM/jI2Je0QViDK', // hashedpassword
         role: 'admin',
         createdAt: now,
         updatedAt: now,
@@ -32,7 +32,7 @@ module.exports = {
       {
         id: vendorUserId,
         email: 'vendor@example.com',
-        password: '$2b$10$hashedpassword',
+        password: '$2b$10$peCe1.CLcKZ87Z38/Ekfke/6E.DQ7xrLcrIa1cNQM/jI2Je0QViDK', // hashedpassword
         role: 'vendor',
         vendorId: vendor1Id,
         createdAt: now,

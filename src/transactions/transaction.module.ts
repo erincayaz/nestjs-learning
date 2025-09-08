@@ -10,6 +10,6 @@ import { TransactionRepository } from "./persistence/transaction.repository";
   imports: [SequelizeModule.forFeature([TransactionEntity]), VendorModule],
   controllers: [TransactionController],
   providers: [TransactionService, TransactionRepository],
-  exports: [TransactionService]
+  exports: [TransactionService, TransactionRepository]
 })
 export class TransactionModule {}
